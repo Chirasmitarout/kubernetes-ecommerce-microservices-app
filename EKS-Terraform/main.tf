@@ -1,4 +1,3 @@
-```hcl
 terraform {
   required_providers {
     aws = {
@@ -160,7 +159,7 @@ resource "aws_route_table" "public" {
 }
 
 ############################
-# PUBLIC SUBNET ASSOCIATIONS
+# PUBLIC SUBNET 1 ASSOCIATION
 ############################
 
 resource "aws_route_table_association" "pub1" {
@@ -168,6 +167,10 @@ resource "aws_route_table_association" "pub1" {
   subnet_id      = aws_subnet.public1.id
   route_table_id = aws_route_table.public.id
 }
+
+############################
+# PUBLIC SUBNET 2 ASSOCIATION
+############################
 
 resource "aws_route_table_association" "pub2" {
 
@@ -194,7 +197,7 @@ resource "aws_route_table" "private" {
 }
 
 ############################
-# PRIVATE SUBNET ASSOCIATIONS
+# PRIVATE SUBNET 1 ASSOCIATION
 ############################
 
 resource "aws_route_table_association" "priv1" {
@@ -202,6 +205,10 @@ resource "aws_route_table_association" "priv1" {
   subnet_id      = aws_subnet.private1.id
   route_table_id = aws_route_table.private.id
 }
+
+############################
+# PRIVATE SUBNET 2 ASSOCIATION
+############################
 
 resource "aws_route_table_association" "priv2" {
 
@@ -249,6 +256,12 @@ resource "aws_security_group" "allow_all" {
 ############################################################
 # EXISTING IAM ROLE - EKS CLUSTER
 ############################################################
+#
+# This role already exists in AWS:
+# eks-cluster-role
+#
+# Therefore we use DATA instead of RESOURCE.
+############################################################
 
 data "aws_iam_role" "cluster_role" {
 
@@ -267,6 +280,11 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
 
 ############################################################
 # EXISTING IAM ROLE - EKS WORKER NODE
+############################################################
+#
+# This role already exists in AWS:
+# eks-worker-role
+#
 ############################################################
 
 data "aws_iam_role" "worker_role" {
@@ -403,6 +421,7 @@ resource "aws_instance" "eks" {
   user_data = <<-EOF
     #!/bin/bash
 
+    # Update system
     yum update -y
 
     # ------------------------------------
@@ -415,6 +434,7 @@ resource "aws_instance" "eks" {
 
     mv kubectl /usr/local/bin/kubectl
 
+    # Verify kubectl
     kubectl version --client || true
 
     # ------------------------------------
@@ -427,6 +447,7 @@ resource "aws_instance" "eks" {
 
     mv /tmp/eksctl /usr/local/bin/eksctl
 
+    # Verify eksctl
     eksctl version || true
 
   EOF
@@ -499,6 +520,11 @@ resource "aws_eks_addon" "pod_identity" {
 ############################################################
 # EXISTING EBS CSI IAM ROLE
 ############################################################
+#
+# This role already exists:
+# AmazonEKS_EBS_CSI_DriverRole
+#
+############################################################
 
 data "aws_iam_role" "ebs_csi_role" {
 
@@ -553,107 +579,3 @@ resource "aws_eks_addon" "ebs_csi" {
     aws_eks_pod_identity_association.ebs_csi
   ]
 }
-
-############################################################
-# EXISTING RDS DB SUBNET GROUP
-############################################################
-#
-# IMPORTANT:
-# 'main' DB subnet group already exists in AWS.
-#
-# Therefore DO NOT create:
-#
-# resource "aws_db_subnet_group" "sub-grp"
-#
-# Instead, read the existing subnet group using DATA.
-############################################################
-
-data "aws_db_subnet_group" "main" {
-
-  name = "main"
-}
-```
-
-### Aapke `rds.tf` mein kya change karna hai
-
-**Ye old code hata do:**
-
-```hcl
-resource "aws_db_subnet_group" "sub-grp" {
-
-  name = "main"
-
-  subnet_ids = [
-    aws_subnet.private1.id,
-    aws_subnet.private2.id
-  ]
-
-  tags = {
-    Name = "main"
-  }
-}
-```
-
-Aur isko use karo:
-
-```hcl
-data "aws_db_subnet_group" "main" {
-  name = "main"
-}
-```
-
-### Agar `aws_db_instance` bhi hai
-
-Agar aapke `rds.tf` mein RDS instance kuch aisa hai:
-
-```hcl
-resource "aws_db_instance" "mysql" {
-
-  # ...
-
-  db_subnet_group_name = aws_db_subnet_group.sub-grp.name
-}
-```
-
-to usko bhi change karna hoga:
-
-```hcl
-db_subnet_group_name = data.aws_db_subnet_group.main.name
-```
-
-**Simple difference:**
-
-```text
-resource "aws_db_subnet_group"
-        ↓
-Terraform AWS mein NEW subnet group banayega
-        ↓
-Already "main" exists
-        ↓
-ERROR ❌
-```
-
-Correct:
-
-```text
-data "aws_db_subnet_group"
-        ↓
-Terraform existing "main" ko read karega
-        ↓
-NEW subnet group create nahi karega
-        ↓
-ERROR solved ✅
-```
-
-### Ab commands
-
-Old `aws_db_subnet_group.sub-grp` resource ko code se remove karne ke baad:
-
-```bash
-terraform fmt
-terraform validate
-terraform plan
-terraform apply
-```
-
-**Ek important point:** Agar aapka existing `main` DB subnet group **old/different VPC ke subnets** ko point karta hai, to RDS ke liye woh automatically correct nahi hoga. Us case mein existing `main` ko import/manage karna ya naya uniquely named subnet group banana better hoga. Lekin **sirf `DBSubnetGroupAlreadyExists` error ke according**, `data "aws_db_subnet_group"` wala change sahi hai.
