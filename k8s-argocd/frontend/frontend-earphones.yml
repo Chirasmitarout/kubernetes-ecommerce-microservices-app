@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/SuprabhaNayak93/kubernetes-veeraops-ecommerce-microservices-app.git
+    repoURL: https://github.com/Chirasmitarout/kubernetes-ecommerce-microservices-app.git
     path: frontend/earphones
     targetRevision: main
   destination:
